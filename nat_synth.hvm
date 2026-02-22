@@ -1,0 +1,123 @@
+// ============================================================
+// HVM4 Natural Number Predicate Synthesizer
+//
+// Extends enum_nat.hvm: instead of just finding a natural
+// number satisfying an equation, we synthesize a PREDICATE
+// over naturals from positive and negative examples.
+//
+// Uses the recursive superposition trick:
+//   @N = &L{#Z{}, #S{@N}}  -- all naturals simultaneously
+//
+// Then finds a Nat → Bool function f such that:
+//   f(0)=T, f(1)=F, f(2)=T, f(3)=F, f(4)=T
+//
+// Solution: f(n) = (n is even)
+//
+// Run: path/to/clang/main nat_synth.hvm -C10
+// ============================================================
+
+// ---- Peano naturals ----
+
+@nat_eq = λ{
+  #Z: λ{
+    #Z: 1
+    #S: λp. 0
+  };
+  #S: λp. λ{
+    #Z: 0
+    #S: λq. @nat_eq(p, q)
+  }
+}
+
+@nat_add = λ{
+  #Z: λb. b
+  #S: λp. λb. #S{@nat_add(p, b)}
+}
+
+@nat_mul = λ{ #Z: λb. #Z{} ; #S: λp. λb. !B&M=b; @nat_add(B₀, @nat_mul(p, B₁)) }
+
+@nat_mod2 = λ{
+  #Z: 0
+  #S: λp. λ{ #Z: 1 ; #S: λq. @nat_mod2(q) }(p)
+}
+
+// Construct small naturals
+@n0 = #Z{}
+@n1 = #S{#Z{}}
+@n2 = #S{#S{#Z{}}}
+@n3 = #S{#S{#S{#Z{}}}}
+@n4 = #S{#S{#S{#S{#Z{}}}}}
+
+// ---- Predicate grammar ----
+// Pred ::= #Always{}       -- always true
+//        | #Never{}        -- always false
+//        | #IsZero{}       -- n == 0
+//        | #IsEven{}       -- n mod 2 == 0
+//        | #IsOdd{}        -- n mod 2 == 1
+//        | #Not{p}         -- NOT p
+//        | #And{p1,p2}     -- p1 AND p2
+//        | #Or{p1,p2}      -- p1 OR p2
+
+// Predicate evaluator: @peval(pred, n) → 0 or 1
+@peval = λ{
+  #Always: λn. 1
+  #Never:  λn. 0
+  #IsZero: λ{ #Z: λn. 1 ; #S: λp. λn. 0 }
+  #IsEven: λn. (1 - @nat_mod2(n))
+  #IsOdd:  λn. @nat_mod2(n)
+  #Not: λp.  λn. (1 - @peval(p, n))
+  #And: λp1. λp2. λ&n. (@peval(p1, n) && @peval(p2, n))
+  #Or:  λp1. λp2. λ&n. (@peval(p1, n) || @peval(p2, n))
+}
+
+// ---- Search space ----
+// Same unique-label trick as arith_synth.hvm.
+// Terminals: {#Always,#Never,#IsZero,#IsEven,#IsOdd}
+
+@t0 = &A0{#Always{}, &A1{#Never{}, &A2{#IsZero{}, &A3{#IsEven{}, #IsOdd{}}}}}
+@t1 = &B0{#Always{}, &B1{#Never{}, &B2{#IsZero{}, &B3{#IsEven{}, #IsOdd{}}}}}
+@t2 = &C0{#Always{}, &C1{#Never{}, &C2{#IsZero{}, &C3{#IsEven{}, #IsOdd{}}}}}
+@t3 = &D0{#Always{}, &D1{#Never{}, &D2{#IsZero{}, &D3{#IsEven{}, #IsOdd{}}}}}
+@t4 = &E0{#Always{}, &E1{#Never{}, &E2{#IsZero{}, &E3{#IsEven{}, #IsOdd{}}}}}
+@t5 = &F0{#Always{}, &F1{#Never{}, &F2{#IsZero{}, &F3{#IsEven{}, #IsOdd{}}}}}
+@t6 = &G0{#Always{}, &G1{#Never{}, &G2{#IsZero{}, &G3{#IsEven{}, #IsOdd{}}}}}
+
+// Depth-1 compound predicates (Not is unary, And/Or are binary)
+@p1L = &H0{
+  @t1,
+  &H1{ #Not{@t1}, &H2{ #And{@t2, @t3}, #Or{@t2, @t3} } }
+}
+@p1R = &H3{
+  @t4,
+  &H4{ #Not{@t4}, &H5{ #And{@t5, @t6}, #Or{@t5, @t6} } }
+}
+
+// Depth-2
+@pred = &H6{
+  @t0,
+  &H7{ #Not{@t0}, &H8{ #And{@p1L, @p1R}, #Or{@p1L, @p1R} } }
+}
+
+// ---- Spec ----
+// f(0)=1, f(1)=0, f(2)=1, f(3)=0, f(4)=1  → f = IsEven
+@spec = λp.
+  !p1&P = p;
+  !p2&Q = p1₁;
+  !p3&R = p2₁;
+  !p4&S = p3₁;
+  ((@peval(p1₀, @n0) == 1) .&.
+   ((@peval(p2₀, @n1) == 0) .&.
+    ((@peval(p3₀, @n2) == 1) .&.
+     ((@peval(p4₀, @n3) == 0) .&.
+      (@peval(p4₁, @n4) == 1)))))
+
+@if = λ{
+  0:    λt.λf.f
+  _: λc.λt.λf.t
+}
+
+@main =
+  !p&T = @pred;
+  @if(@spec(p₀), p₁, &{})
+
+// Expected: #IsEven{}  (and equivalent forms like #Not{#IsOdd{}})

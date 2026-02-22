@@ -1,0 +1,75 @@
+// ============================================================
+// HVM4 Arithmetic Expression Synthesizer
+//
+// Each tree position gets its own label family (HVM4 labels
+// are ≤2-char base64 names). Shared labels collapse to the
+// same branch; disjoint labels collapse independently.
+//
+// Grammar:  Expr ::= x | 0 | 1 | 2 | 3
+//                  | Expr + Expr
+//                  | Expr * Expr
+//
+// Spec: f(0)=0, f(1)=2, f(2)=6, f(3)=12
+//
+// Run: path/to/clang/main arith_synth.hvm -C30
+// ============================================================
+
+@if = λ{
+  0:    λt.λf.f
+  _: λc.λt.λf.t
+}
+
+// Evaluator
+@eval = λ{
+  #Var: λx. x
+  #Num: λn. λy. n
+  #Add: λl. λr. λ&x. (@eval(l, x) + @eval(r, x))
+  #Mul: λl. λr. λ&x. (@eval(l, x) * @eval(r, x))
+}
+
+// ---- Terminal sets with unique 2-char label families ----
+// Slot:  purpose                        labels used
+//  v0 -- top-level terminal             a0 a1 a2 a3
+//  v1 -- depth-1 left,  terminal        b0 b1 b2 b3
+//  v2 -- depth-1 left,  left operand    c0 c1 c2 c3
+//  v3 -- depth-1 left,  right operand   d0 d1 d2 d3
+//  v4 -- depth-1 right, terminal        e0 e1 e2 e3
+//  v5 -- depth-1 right, left operand    f0 f1 f2 f3
+//  v6 -- depth-1 right, right operand   g0 g1 g2 g3
+
+@v0 = &a0{#Var{}, &a1{#Num{0}, &a2{#Num{1}, &a3{#Num{2}, #Num{3}}}}}
+@v1 = &b0{#Var{}, &b1{#Num{0}, &b2{#Num{1}, &b3{#Num{2}, #Num{3}}}}}
+@v2 = &c0{#Var{}, &c1{#Num{0}, &c2{#Num{1}, &c3{#Num{2}, #Num{3}}}}}
+@v3 = &d0{#Var{}, &d1{#Num{0}, &d2{#Num{1}, &d3{#Num{2}, #Num{3}}}}}
+@v4 = &e0{#Var{}, &e1{#Num{0}, &e2{#Num{1}, &e3{#Num{2}, #Num{3}}}}}
+@v5 = &f0{#Var{}, &f1{#Num{0}, &f2{#Num{1}, &f3{#Num{2}, #Num{3}}}}}
+@v6 = &g0{#Var{}, &g1{#Num{0}, &g2{#Num{1}, &g3{#Num{2}, #Num{3}}}}}
+
+// ---- Depth-1 sub-trees (disjoint label families) ----
+// @e1L: v1/v2/v3 terminals, h0 structural, h1 op-choice
+// @e1R: v4/v5/v6 terminals, h2 structural, h3 op-choice
+@e1L = &h0{ @v1, &h1{ #Add{@v2, @v3}, #Mul{@v2, @v3} } }
+@e1R = &h2{ @v4, &h3{ #Add{@v5, @v6}, #Mul{@v5, @v6} } }
+
+// ---- Depth-2 top level ----
+// v0 for terminal, h4 structural, h5 op-choice
+// @e1L and @e1R are fully disjoint label sets
+@e2 = &h4{ @v0, &h5{ #Add{@e1L, @e1R}, #Mul{@e1L, @e1R} } }
+
+// ---- Spec check ----
+@spec = λe.
+  !e1&U = e;
+  !e2&V = e1₁;
+  !e3&W = e2₁;
+  ((@eval(e1₀, 0) == 0) .&.
+   ((@eval(e2₀, 1) == 2) .&.
+    ((@eval(e3₀, 2) == 6) .&.
+     (@eval(e3₁, 3) == 12))))
+
+// ---- Synthesize ----
+// Z is unique (not in @e2's label set), so the dup distributes
+// through all internal sups via commutation, giving two complete
+// independent copies: e0 for checking, e1 for returning.
+@main =
+  !e&Z = @e2;
+  @if(@spec(e₀), e₁, &{})

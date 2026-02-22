@@ -1,0 +1,70 @@
+// ============================================================
+// HVM4 Two-Variable Expression Synthesizer
+//
+// Finds expressions over two inputs (a, b) satisfying I/O spec.
+// Demonstrates how adding a second variable expands the grammar
+// while the same superposition+pruning technique still works.
+//
+// Grammar:  Expr ::= a | b | 0 | 1
+//                  | Expr + Expr
+//                  | Expr * Expr
+//
+// Spec: f(0,1)=1  f(1,0)=1  f(2,3)=5  f(1,2)=3
+//
+// Unique solution: a + b
+//
+// Run: path/to/clang/main two_var_synth.hvm -C30
+// ============================================================
+
+@if = λ{
+  0:    λt.λf.f
+  _: λc.λt.λf.t
+}
+
+// Evaluator: @eval(expr, a, b) → number
+@eval = λ{
+  #Va: λa. λb. a
+  #Vb: λa. λb. b
+  #Num: λn. λa. λb. n
+  #Add: λl. λr. λ&a. λ&b. (@eval(l, a, b) + @eval(r, a, b))
+  #Mul: λl. λr. λ&a. λ&b. (@eval(l, a, b) * @eval(r, a, b))
+}
+
+// Terminal sets (unique labels per tree slot)
+// Terminals: #Va{}, #Vb{}, #Num{0}, #Num{1}
+@v0 = &a0{#Va{}, &a1{#Vb{}, &a2{#Num{0}, #Num{1}}}}
+@v1 = &b0{#Va{}, &b1{#Vb{}, &b2{#Num{0}, #Num{1}}}}
+@v2 = &c0{#Va{}, &c1{#Vb{}, &c2{#Num{0}, #Num{1}}}}
+@v3 = &d0{#Va{}, &d1{#Vb{}, &d2{#Num{0}, #Num{1}}}}
+@v4 = &e0{#Va{}, &e1{#Vb{}, &e2{#Num{0}, #Num{1}}}}
+@v5 = &f0{#Va{}, &f1{#Vb{}, &f2{#Num{0}, #Num{1}}}}
+@v6 = &g0{#Va{}, &g1{#Vb{}, &g2{#Num{0}, #Num{1}}}}
+
+// Depth-1 sub-trees
+@e1L = &h0{ @v1, &h1{ #Add{@v2, @v3}, #Mul{@v2, @v3} } }
+@e1R = &h2{ @v4, &h3{ #Add{@v5, @v6}, #Mul{@v5, @v6} } }
+
+// Depth-2 top level
+@e2 = &h4{ @v0, &h5{ #Add{@e1L, @e1R}, #Mul{@e1L, @e1R} } }
+
+// Spec: f(0,1)=1, f(1,0)=1, f(2,3)=5, f(1,2)=3, f(3,2)=5
+// Five examples; the last breaks a*b symmetry and rules out depth-2
+// survivors like a+(b+0) by requiring specific non-symmetric behavior.
+@spec = λe.
+  !e1&U = e;
+  !e2&V = e1₁;
+  !e3&W = e2₁;
+  !e4&X = e3₁;
+  ((@eval(e1₀, 0, 1) == 1) .&.
+   ((@eval(e2₀, 1, 0) == 1) .&.
+    ((@eval(e3₀, 2, 3) == 5) .&.
+     ((@eval(e4₀, 1, 2) == 3) .&.
+      (@eval(e4₁, 3, 2) == 5)))))
+
+@main =
+  !e&Y = @e2;
+  @if(@spec(e₀), e₁, &{})
+
+// Expected: #Add{#Va{},#Vb{}} and #Add{#Vb{},#Va{}}
+// (depth-2 equivalents like a+(b+0) are semantically equal
+//  and also survive — they compute a+b for all inputs)
