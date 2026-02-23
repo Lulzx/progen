@@ -100,6 +100,12 @@ def build(depth, spec, grammar_name, sort_spec):
     # make_node(d) emits definitions and returns the name of the root definition.
     # Terminal sets: &L0{t0, &L1{t1, ... tn-1, tn}} with unique labels per slot.
     # Sub-trees: &S{terminal_slot, &O{#Op0{left,right}, #Op1{left,right}, ...}}
+    #
+    # All labels must be globally unique: when + or .&. commutes with &L{a,b},
+    # it creates a dup-L for the other operand.  Any other &L in that operand
+    # will annihilate (same label), correlating choices that should be
+    # independent.  This forces O(2^depth) unique labels — depth 8 is the
+    # hard ceiling given HVM4's 16-bit label encoding (4096 max labels).
 
     slot_n = [0]
     node_n = [0]
