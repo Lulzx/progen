@@ -38,6 +38,22 @@ Flags:
 - `--grammar arith|twov` — terminal/operator set
 - `--sort-spec` — check most-discriminating examples first (~8% fewer interactions)
 
+## Depth scaling (arith grammar, `--sort-spec`)
+
+Interaction count plateaus from depth 6 onward — pruning kills new branches before evaluation:
+
+| depth | labels needed | interactions | time |
+|-------|--------------|-------------|------|
+| 2 | 37 | ~3K | <1ms |
+| 3 | 77 | 15K | <1ms |
+| 4 | 157 | 218K | 2ms |
+| 5 | 317 | 297K | 5ms |
+| 6 | 637 | 349K | 3ms |
+| 7 | 1277 | 355K | 3ms |
+| 8 | 2557 | 353K | 3ms |
+
+Depth 8 is the hard ceiling: HVM4 encodes labels as ≤16-bit values (2 base64 chars = 4096 max), and depth 9 would require 5117 unique labels.
+
 ## How it works
 
 Each tree slot gets its own label family so independent sub-expressions collapse independently (shared labels would collapse to the same branch — the oracle problem). The dup `!e&Z = @grammar` commutes through all internal superpositions via DUP-SUP, giving two complete copies: one for spec checking, one to return.
